@@ -4,7 +4,11 @@
 <title>Green Pin Grid</title>
 
 <style>
-body { text-align:center; font-family:Arial; }
+
+body{
+text-align:center;
+font-family:Arial;
+}
 
 .container{
 position:relative;
@@ -22,6 +26,7 @@ position:absolute;
 top:0;
 left:0;
 }
+
 </style>
 
 </head>
@@ -37,13 +42,17 @@ left:0;
 
 <button id="setA">Set Corner A</button>
 <button id="setB">Set Corner B</button>
+<button id="resetCal">Reset Calibration</button>
 
 <p id="calText">Calibration: not set</p>
 <p id="zoneText">Zone: --</p>
 
 <div class="container">
+
 <img src="green.jpg" id="greenImage">
+
 <canvas id="gridCanvas"></canvas>
+
 </div>
 
 <script>
@@ -93,6 +102,23 @@ document.getElementById("modeLabel").innerText =
 "Mode: Staff (view only)";
 
 }
+
+});
+
+document.getElementById("resetCal").addEventListener("click", function(){
+
+cornerA = null;
+cornerB = null;
+
+localStorage.removeItem("cornerA");
+localStorage.removeItem("cornerB");
+
+document.getElementById("calText").innerText =
+"Calibration: not set";
+
+currentDot = null;
+
+drawGrid();
 
 });
 
@@ -238,6 +264,9 @@ let ny = (latMax - lat)/(latMax-latMin);
 
 let x = nx * canvas.width;
 let y = ny * canvas.height;
+
+x = Math.max(0, Math.min(canvas.width, x));
+y = Math.max(0, Math.min(canvas.height, y));
 
 currentDot = {x,y};
 
