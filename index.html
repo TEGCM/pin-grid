@@ -2,35 +2,13 @@
 <html>
 <head>
 <title>Green Pin Grid</title>
-
 <style>
-
-body{
-text-align:center;
-font-family:Arial;
-}
-
-.container{
-position:relative;
-display:inline-block;
-}
-
-#greenImage{
-max-width:900px;
-width:100%;
-display:block;
-}
-
-#gridCanvas{
-position:absolute;
-top:0;
-left:0;
-}
-
+  body{ text-align:center; font-family:Arial; }
+  .container{ position:relative; display:inline-block; }
+  #greenImage{ max-width:900px; width:100%; display:block; }
+  #gridCanvas{ position:absolute; top:0; left:0; }
 </style>
-
 </head>
-
 <body>
 
 <h2>Green Grid Test</h2>
@@ -40,23 +18,19 @@ left:0;
 
 <p id="gpsText">GPS: waiting...</p>
 
-<button id="setA">Set Corner A</button>
-<button id="setB">Set Corner B</button>
+<button id="setA">Set A (tap point first)</button>
+<button id="setB">Set B (tap point first)</button>
 <button id="resetCal">Reset Calibration</button>
 
 <p id="calText">Calibration: not set</p>
 <p id="zoneText">Zone: --</p>
 
 <div class="container">
-
-<img src="green.jpg" id="greenImage">
-
-<canvas id="gridCanvas"></canvas>
-
+  <img src="green.jpg" id="greenImage">
+  <canvas id="gridCanvas"></canvas>
 </div>
 
 <script>
-
 const img = document.getElementById("greenImage");
 const canvas = document.getElementById("gridCanvas");
 const ctx = canvas.getContext("2d");
@@ -69,242 +43,228 @@ let rows = 0;
 let cols = 0;
 let grid = [];
 
-let lastPos = null;
-let currentDot = null;
+let lastPos = null;          // {lat, lon, acc}
+let currentDot = null;       // {x, y}
+let tapPoint = null;         // {x, y} selected on image for calibration
 
-let cornerA = null;
-let cornerB = null;
+// Calibration points store BOTH gps and pixel:
+let calA = null; // {lat, lon, x, y}
+let calB = null; // {lat, lon, x, y}
 
 document.getElementById("modeBtn").addEventListener("click", function(){
-
-if(!isAdmin){
-
-const pw = prompt("Enter admin password:");
-
-if(pw === ADMIN_PASSWORD){
-
-isAdmin = true;
-this.innerText = "Exit Admin Mode";
-document.getElementById("modeLabel").innerText =
-"Mode: Admin (editing enabled)";
-
-}else{
-
-alert("Wrong password");
-
-}
-
-}else{
-
-isAdmin = false;
-this.innerText = "Enter Admin Mode";
-document.getElementById("modeLabel").innerText =
-"Mode: Staff (view only)";
-
-}
-
-});
-
-document.getElementById("resetCal").addEventListener("click", function(){
-
-cornerA = null;
-cornerB = null;
-
-localStorage.removeItem("cornerA");
-localStorage.removeItem("cornerB");
-
-document.getElementById("calText").innerText =
-"Calibration: not set";
-
-currentDot = null;
-
-drawGrid();
-
-});
-
-document.getElementById("setA").addEventListener("click", function(){
-
-if(!lastPos){ alert("No GPS yet"); return; }
-
-cornerA = lastPos;
-
-localStorage.setItem("cornerA", JSON.stringify(cornerA));
-
-updateCalText();
-
-});
-
-document.getElementById("setB").addEventListener("click", function(){
-
-if(!lastPos){ alert("No GPS yet"); return; }
-
-cornerB = lastPos;
-
-localStorage.setItem("cornerB", JSON.stringify(cornerB));
-
-updateCalText();
-
+  if(!isAdmin){
+    const pw = prompt("Enter admin password:");
+    if(pw === ADMIN_PASSWORD){
+      isAdmin = true;
+      this.innerText = "Exit Admin Mode";
+      document.getElementById("modeLabel").innerText = "Mode: Admin (editing enabled)";
+    } else {
+      alert("Wrong password");
+    }
+  } else {
+    isAdmin = false;
+    this.innerText = "Enter Admin Mode";
+    document.getElementById("modeLabel").innerText = "Mode: Staff (view only)";
+  }
 });
 
 function updateCalText(){
-
-if(cornerA && cornerB){
-
-document.getElementById("calText").innerText =
-"Calibration: READY";
-
-}else{
-
-document.getElementById("calText").innerText =
-"Calibration: not set";
-
+  if(calA && calB){
+    document.getElementById("calText").innerText = "Calibration: READY (A + B set)";
+  } else if(calA || calB){
+    document.getElementById("calText").innerText = "Calibration: partial (set both A and B)";
+  } else {
+    document.getElementById("calText").innerText = "Calibration: not set";
+  }
 }
 
-}
+document.getElementById("resetCal").addEventListener("click", function(){
+  calA = null; calB = null; tapPoint = null;
+  localStorage.removeItem("calA_v2");
+  localStorage.removeItem("calB_v2");
+  document.getElementById("zoneText").innerText = "Zone: --";
+  updateCalText();
+  drawGrid();
+});
+
+document.getElementById("setA").addEventListener("click", function(){
+  if(!lastPos){ alert("No GPS yet."); return; }
+  if(!tapPoint){ alert("Tap a point on the image first."); return; }
+
+  calA = { lat:lastPos.lat, lon:lastPos.lon, x:tapPoint.x, y:tapPoint.y };
+  localStorage.setItem("calA_v2", JSON.stringify(calA));
+  updateCalText();
+  drawGrid();
+});
+
+document.getElementById("setB").addEventListener("click", function(){
+  if(!lastPos){ alert("No GPS yet."); return; }
+  if(!tapPoint){ alert("Tap a point on the image first."); return; }
+
+  calB = { lat:lastPos.lat, lon:lastPos.lon, x:tapPoint.x, y:tapPoint.y };
+  localStorage.setItem("calB_v2", JSON.stringify(calB));
+  updateCalText();
+  drawGrid();
+});
 
 img.onload = function(){
+  canvas.width = img.width;
+  canvas.height = img.height;
 
-canvas.width = img.width;
-canvas.height = img.height;
+  cols = Math.floor(canvas.width / cellSize);
+  rows = Math.floor(canvas.height / cellSize);
 
-cols = Math.floor(canvas.width / cellSize);
-rows = Math.floor(canvas.height / cellSize);
+  // load grid
+  let saved = localStorage.getItem("pinGrid_v1");
+  if(saved){
+    try { grid = JSON.parse(saved); } catch(e){ grid = null; }
+  }
+  if(!grid || !grid.length){
+    grid = [];
+    for(let r=0;r<rows;r++){
+      grid[r]=[];
+      for(let c=0;c<cols;c++) grid[r][c]=0;
+    }
+  }
 
-let saved = localStorage.getItem("pinGrid_v1");
+  // load calibration
+  try { calA = JSON.parse(localStorage.getItem("calA_v2")); } catch(e){}
+  try { calB = JSON.parse(localStorage.getItem("calB_v2")); } catch(e){}
+  if(!calA || calA.x==null) calA = null;
+  if(!calB || calB.x==null) calB = null;
+  updateCalText();
 
-if(saved){
-
-grid = JSON.parse(saved);
-
-}else{
-
-for(let r=0;r<rows;r++){
-
-grid[r] = [];
-
-for(let c=0;c<cols;c++){
-
-grid[r][c] = 0;
-
-}
-
-}
-
-}
-
-drawGrid();
-
+  drawGrid();
 };
 
 function drawGrid(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-ctx.clearRect(0,0,canvas.width,canvas.height);
+  // red zones + grid lines
+  for(let r=0;r<rows;r++){
+    for(let c=0;c<cols;c++){
+      if(grid[r][c] === 1){
+        ctx.fillStyle = "rgba(255,0,0,0.25)";
+        ctx.fillRect(c*cellSize, r*cellSize, cellSize, cellSize);
+      }
+      ctx.strokeStyle = "rgba(0,0,0,0.30)";
+      ctx.strokeRect(c*cellSize, r*cellSize, cellSize, cellSize);
+    }
+  }
 
-for(let r=0;r<rows;r++){
+  // show tapPoint marker (yellow)
+  if(tapPoint){
+    ctx.beginPath();
+    ctx.arc(tapPoint.x, tapPoint.y, 6, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(255, 200, 0, 0.9)";
+    ctx.fill();
+  }
 
-for(let c=0;c<cols;c++){
-
-if(grid[r][c] === 1){
-
-ctx.fillStyle = "rgba(255,0,0,0.25)";
-ctx.fillRect(c*cellSize,r*cellSize,cellSize,cellSize);
-
-}
-
-ctx.strokeStyle = "rgba(0,0,0,0.3)";
-ctx.strokeRect(c*cellSize,r*cellSize,cellSize,cellSize);
-
-}
-
-}
-
-if(currentDot){
-
-ctx.beginPath();
-ctx.arc(currentDot.x,currentDot.y,6,0,Math.PI*2);
-ctx.fillStyle = "blue";
-ctx.fill();
-
-}
-
+  // show current GPS dot (blue)
+  if(currentDot){
+    ctx.beginPath();
+    ctx.arc(currentDot.x, currentDot.y, 7, 0, Math.PI*2);
+    ctx.fillStyle = "rgba(0, 80, 255, 0.9)";
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
 }
 
 canvas.addEventListener("click", function(e){
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
 
-if(!isAdmin) return;
+  // Always allow selecting a tap point (staff can see where they tapped, but it doesn't change zones)
+  tapPoint = { x, y };
 
-const rect = canvas.getBoundingClientRect();
+  // Only admin can toggle red squares
+  if(isAdmin){
+    const col = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    if(row>=0 && row<rows && col>=0 && col<cols){
+      grid[row][col] = grid[row][col] === 1 ? 0 : 1;
+      localStorage.setItem("pinGrid_v1", JSON.stringify(grid));
+    }
+  }
 
-const x = e.clientX - rect.left;
-const y = e.clientY - rect.top;
-
-const col = Math.floor(x / cellSize);
-const row = Math.floor(y / cellSize);
-
-grid[row][col] = grid[row][col] === 1 ? 0 : 1;
-
-localStorage.setItem("pinGrid_v1", JSON.stringify(grid));
-
-drawGrid();
-
+  drawGrid();
 });
 
-function updateDot(lat,lon){
+// Map GPS -> pixel using two anchor pairs (A and B)
+function updateDot(lat, lon){
+  currentDot = null;
 
-if(!cornerA || !cornerB) return;
+  if(!calA || !calB){
+    document.getElementById("zoneText").innerText = "Zone: -- (calibrate A + B)";
+    drawGrid();
+    return;
+  }
 
-const latMin = Math.min(cornerA.lat,cornerB.lat);
-const latMax = Math.max(cornerA.lat,cornerB.lat);
+  const dLat = calB.lat - calA.lat;
+  const dLon = calB.lon - calA.lon;
 
-const lonMin = Math.min(cornerA.lon,cornerB.lon);
-const lonMax = Math.max(cornerA.lon,cornerB.lon);
+  // Avoid divide-by-zero
+  if(dLat === 0 || dLon === 0){
+    document.getElementById("zoneText").innerText = "Zone: -- (bad calibration)";
+    drawGrid();
+    return;
+  }
 
-let nx = (lon - lonMin)/(lonMax-lonMin);
-let ny = (latMax - lat)/(latMax-latMin);
+  // Normalize along each axis
+  const u = (lon - calA.lon) / dLon;   // 0 at A, 1 at B (lon axis)
+  const v = (lat - calA.lat) / dLat;   // 0 at A, 1 at B (lat axis)
 
-let x = nx * canvas.width;
-let y = ny * canvas.height;
+  // Blend to pixel space
+  let x = calA.x + u * (calB.x - calA.x);
+  let y = calA.y + (1 - v) * (calB.y - calA.y); // invert lat for screen
 
-x = Math.max(0, Math.min(canvas.width, x));
-y = Math.max(0, Math.min(canvas.height, y));
+  // Clamp
+  x = Math.max(0, Math.min(canvas.width, x));
+  y = Math.max(0, Math.min(canvas.height, y));
 
-currentDot = {x,y};
+  currentDot = { x, y };
 
-drawGrid();
+  // Determine zone status by grid cell
+  const col = Math.floor(x / cellSize);
+  const row = Math.floor(y / cellSize);
+  if(row>=0 && row<rows && col>=0 && col<cols){
+    document.getElementById("zoneText").innerText =
+      grid[row][col] === 1 ? "Zone: NO CUP (red)" : "Zone: OK (green)";
+  } else {
+    document.getElementById("zoneText").innerText = "Zone: outside grid";
+  }
 
+  drawGrid();
 }
 
+// GPS watcher
 if("geolocation" in navigator){
+  navigator.geolocation.watchPosition(
+    function(pos){
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const acc = Math.round(pos.coords.accuracy);
 
-navigator.geolocation.watchPosition(
+      lastPos = { lat, lon, acc };
 
-function(pos){
+      document.getElementById("gpsText").innerText =
+        "GPS: " + lat.toFixed(6) + ", " + lon.toFixed(6) + " (±" + acc + "m)";
 
-let lat = pos.coords.latitude;
-let lon = pos.coords.longitude;
-
-lastPos = {lat,lon};
-
-document.getElementById("gpsText").innerText =
-"GPS: "+lat.toFixed(6)+", "+lon.toFixed(6);
-
-updateDot(lat,lon);
-
-},
-
-function(err){
-
-document.getElementById("gpsText").innerText =
-"GPS error";
-
-},
-
-{enableHighAccuracy:true}
-
-);
-
+      updateDot(lat, lon);
+    },
+    function(err){
+      document.getElementById("gpsText").innerText =
+        "GPS error: " + err.message;
+    },
+    { enableHighAccuracy:true, maximumAge:2000, timeout:10000 }
+  );
+} else {
+  document.getElementById("gpsText").innerText = "GPS not supported.";
 }
-
 </script>
 
 </body>
