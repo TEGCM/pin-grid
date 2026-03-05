@@ -15,7 +15,7 @@
 <h2>Green Grid Test</h2>
 <button id="modeBtn">Enter Admin Mode</button>
 <p id="modeLabel">Mode: Staff (view only)</p>
-
+<p id="gpsText">GPS: waiting...</p>
 <div class="container">
   <img src="green.jpg" id="greenImage">
   <canvas id="gridCanvas"></canvas>
@@ -137,6 +137,30 @@
 
     drawGrid();
   });
+// ===== GPS TEST (Phase A) =====
+if ("geolocation" in navigator) {
+  navigator.geolocation.watchPosition(
+    (pos) => {
+      const lat = pos.coords.latitude.toFixed(6);
+      const lon = pos.coords.longitude.toFixed(6);
+      const acc = Math.round(pos.coords.accuracy);
+
+      document.getElementById("gpsText").innerText =
+        `GPS: ${lat}, ${lon} (±${acc}m)`;
+    },
+    (err) => {
+      document.getElementById("gpsText").innerText =
+        `GPS error: ${err.message}`;
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 2000,
+      timeout: 10000,
+    }
+  );
+} else {
+  document.getElementById("gpsText").innerText = "GPS not supported on this device.";
+}
 </script>
 
 </body>
