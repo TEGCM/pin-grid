@@ -1,166 +1,281 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Green Pin Grid</title>
-  <style>
-    body { text-align: center; font-family: Arial; }
-    .container { position: relative; display: inline-block; }
-    #greenImage { max-width: 900px; width: 100%; display: block; }
-    #gridCanvas { position: absolute; top: 0; left: 0; }
-    button { padding: 8px 12px; margin: 6px; }
-  </style>
+<title>Green Pin Grid</title>
+
+<style>
+body { text-align:center; font-family:Arial; }
+
+.container{
+position:relative;
+display:inline-block;
+}
+
+#greenImage{
+max-width:900px;
+width:100%;
+display:block;
+}
+
+#gridCanvas{
+position:absolute;
+top:0;
+left:0;
+}
+</style>
+
 </head>
+
 <body>
 
 <h2>Green Grid Test</h2>
+
 <button id="modeBtn">Enter Admin Mode</button>
 <p id="modeLabel">Mode: Staff (view only)</p>
+
 <p id="gpsText">GPS: waiting...</p>
+
+<button id="setA">Set Corner A</button>
+<button id="setB">Set Corner B</button>
+
+<p id="calText">Calibration: not set</p>
+<p id="zoneText">Zone: --</p>
+
 <div class="container">
-  <img src="green.jpg" id="greenImage">
-  <canvas id="gridCanvas"></canvas>
+<img src="green.jpg" id="greenImage">
+<canvas id="gridCanvas"></canvas>
 </div>
 
 <script>
-  const img = document.getElementById("greenImage");
-  const canvas = document.getElementById("gridCanvas");
-  const ctx = canvas.getContext("2d");
 
-  // ===== SETTINGS =====
-  let cellSize = 20;                 // try 15 / 20 / 25
-  const ADMIN_PASSWORD = "1234";     // CHANGE THIS
+const img = document.getElementById("greenImage");
+const canvas = document.getElementById("gridCanvas");
+const ctx = canvas.getContext("2d");
 
-  // ===== STATE =====
-  let isAdmin = false;
-  let rows = 0;
-  let cols = 0;
-  let grid = [];
+let cellSize = 20;
+const ADMIN_PASSWORD = "1234";
 
-  // ===== ADMIN / STAFF TOGGLE =====
-  document.getElementById("modeBtn").addEventListener("click", function () {
-    if (!isAdmin) {
-      const pw = prompt("Enter admin password:");
-      if (pw === ADMIN_PASSWORD) {
-        isAdmin = true;
-        this.innerText = "Exit Admin Mode";
-        document.getElementById("modeLabel").innerText = "Mode: Admin (editing enabled)";
-      } else {
-        alert("Wrong password");
-      }
-    } else {
-      isAdmin = false;
-      this.innerText = "Enter Admin Mode";
-      document.getElementById("modeLabel").innerText = "Mode: Staff (view only)";
-    }
-  });
+let isAdmin = false;
+let rows = 0;
+let cols = 0;
+let grid = [];
 
-  // ===== LOAD IMAGE + GRID =====
-  img.onload = function () {
-    canvas.width = img.width;
-    canvas.height = img.height;
+let lastPos = null;
+let currentDot = null;
 
-    cols = Math.floor(canvas.width / cellSize);
-    rows = Math.floor(canvas.height / cellSize);
+let cornerA = null;
+let cornerB = null;
 
-    // Try to load saved grid
-    const saved = localStorage.getItem("pinGrid_v1");
+document.getElementById("modeBtn").addEventListener("click", function(){
 
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        // Only use saved data if it matches current rows/cols
-        if (parsed.length === rows && parsed[0].length === cols) {
-          grid = parsed;
-        } else {
-          grid = makeBlankGrid(rows, cols);
-          localStorage.removeItem("pinGrid_v1");
-        }
-      } catch (e) {
-        grid = makeBlankGrid(rows, cols);
-        localStorage.removeItem("pinGrid_v1");
-      }
-    } else {
-      grid = makeBlankGrid(rows, cols);
-    }
+if(!isAdmin){
 
-    drawGrid();
-  };
+const pw = prompt("Enter admin password:");
 
-  function makeBlankGrid(rCount, cCount) {
-    const g = [];
-    for (let r = 0; r < rCount; r++) {
-      g[r] = [];
-      for (let c = 0; c < cCount; c++) {
-        g[r][c] = 0; // 0 = allowed, 1 = no-cup
-      }
-    }
-    return g;
-  }
+if(pw === ADMIN_PASSWORD){
 
-  function drawGrid() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+isAdmin = true;
+this.innerText = "Exit Admin Mode";
+document.getElementById("modeLabel").innerText =
+"Mode: Admin (editing enabled)";
 
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
+}else{
 
-        // red overlay (more transparent so you can see contours)
-        if (grid[r][c] === 1) {
-          ctx.fillStyle = "rgba(255,0,0,0.25)";
-          ctx.fillRect(c * cellSize, r * cellSize, cellSize, cellSize);
-        }
+alert("Wrong password");
 
-        // grid lines (lighter)
-        ctx.strokeStyle = "rgba(0,0,0,0.30)";
-        ctx.strokeRect(c * cellSize, r * cellSize, cellSize, cellSize);
-      }
-    }
-  }
-
-  // ===== CLICK TO TOGGLE (ADMIN ONLY) =====
-  canvas.addEventListener("click", function (e) {
-    if (!isAdmin) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const col = Math.floor(x / cellSize);
-    const row = Math.floor(y / cellSize);
-
-    // Safety check
-    if (row < 0 || row >= rows || col < 0 || col >= cols) return;
-
-    grid[row][col] = (grid[row][col] === 1) ? 0 : 1;
-
-    // Save
-    localStorage.setItem("pinGrid_v1", JSON.stringify(grid));
-
-    drawGrid();
-  });
-// ===== GPS TEST (Phase A) =====
-if ("geolocation" in navigator) {
-  navigator.geolocation.watchPosition(
-    (pos) => {
-      const lat = pos.coords.latitude.toFixed(6);
-      const lon = pos.coords.longitude.toFixed(6);
-      const acc = Math.round(pos.coords.accuracy);
-
-      document.getElementById("gpsText").innerText =
-        `GPS: ${lat}, ${lon} (±${acc}m)`;
-    },
-    (err) => {
-      document.getElementById("gpsText").innerText =
-        `GPS error: ${err.message}`;
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 2000,
-      timeout: 10000,
-    }
-  );
-} else {
-  document.getElementById("gpsText").innerText = "GPS not supported on this device.";
 }
+
+}else{
+
+isAdmin = false;
+this.innerText = "Enter Admin Mode";
+document.getElementById("modeLabel").innerText =
+"Mode: Staff (view only)";
+
+}
+
+});
+
+document.getElementById("setA").addEventListener("click", function(){
+
+if(!lastPos){ alert("No GPS yet"); return; }
+
+cornerA = lastPos;
+
+localStorage.setItem("cornerA", JSON.stringify(cornerA));
+
+updateCalText();
+
+});
+
+document.getElementById("setB").addEventListener("click", function(){
+
+if(!lastPos){ alert("No GPS yet"); return; }
+
+cornerB = lastPos;
+
+localStorage.setItem("cornerB", JSON.stringify(cornerB));
+
+updateCalText();
+
+});
+
+function updateCalText(){
+
+if(cornerA && cornerB){
+
+document.getElementById("calText").innerText =
+"Calibration: READY";
+
+}else{
+
+document.getElementById("calText").innerText =
+"Calibration: not set";
+
+}
+
+}
+
+img.onload = function(){
+
+canvas.width = img.width;
+canvas.height = img.height;
+
+cols = Math.floor(canvas.width / cellSize);
+rows = Math.floor(canvas.height / cellSize);
+
+let saved = localStorage.getItem("pinGrid_v1");
+
+if(saved){
+
+grid = JSON.parse(saved);
+
+}else{
+
+for(let r=0;r<rows;r++){
+
+grid[r] = [];
+
+for(let c=0;c<cols;c++){
+
+grid[r][c] = 0;
+
+}
+
+}
+
+}
+
+drawGrid();
+
+};
+
+function drawGrid(){
+
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+for(let r=0;r<rows;r++){
+
+for(let c=0;c<cols;c++){
+
+if(grid[r][c] === 1){
+
+ctx.fillStyle = "rgba(255,0,0,0.25)";
+ctx.fillRect(c*cellSize,r*cellSize,cellSize,cellSize);
+
+}
+
+ctx.strokeStyle = "rgba(0,0,0,0.3)";
+ctx.strokeRect(c*cellSize,r*cellSize,cellSize,cellSize);
+
+}
+
+}
+
+if(currentDot){
+
+ctx.beginPath();
+ctx.arc(currentDot.x,currentDot.y,6,0,Math.PI*2);
+ctx.fillStyle = "blue";
+ctx.fill();
+
+}
+
+}
+
+canvas.addEventListener("click", function(e){
+
+if(!isAdmin) return;
+
+const rect = canvas.getBoundingClientRect();
+
+const x = e.clientX - rect.left;
+const y = e.clientY - rect.top;
+
+const col = Math.floor(x / cellSize);
+const row = Math.floor(y / cellSize);
+
+grid[row][col] = grid[row][col] === 1 ? 0 : 1;
+
+localStorage.setItem("pinGrid_v1", JSON.stringify(grid));
+
+drawGrid();
+
+});
+
+function updateDot(lat,lon){
+
+if(!cornerA || !cornerB) return;
+
+const latMin = Math.min(cornerA.lat,cornerB.lat);
+const latMax = Math.max(cornerA.lat,cornerB.lat);
+
+const lonMin = Math.min(cornerA.lon,cornerB.lon);
+const lonMax = Math.max(cornerA.lon,cornerB.lon);
+
+let nx = (lon - lonMin)/(lonMax-lonMin);
+let ny = (latMax - lat)/(latMax-latMin);
+
+let x = nx * canvas.width;
+let y = ny * canvas.height;
+
+currentDot = {x,y};
+
+drawGrid();
+
+}
+
+if("geolocation" in navigator){
+
+navigator.geolocation.watchPosition(
+
+function(pos){
+
+let lat = pos.coords.latitude;
+let lon = pos.coords.longitude;
+
+lastPos = {lat,lon};
+
+document.getElementById("gpsText").innerText =
+"GPS: "+lat.toFixed(6)+", "+lon.toFixed(6);
+
+updateDot(lat,lon);
+
+},
+
+function(err){
+
+document.getElementById("gpsText").innerText =
+"GPS error";
+
+},
+
+{enableHighAccuracy:true}
+
+);
+
+}
+
 </script>
 
 </body>
