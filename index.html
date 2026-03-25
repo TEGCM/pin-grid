@@ -91,53 +91,9 @@ button {
   user-select: none;
 }
 
-.grid {
-  position: absolute;
-  inset: 0;
-  display: grid;
-}
-
-.cell {
-  border: 1px solid rgba(0,0,0,.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 900;
-  font-size: 16px;
-  user-select: none;
-}
-
-/* FRONT = RED */
-.cell.F {
-  color: rgba(220,0,0,0.9);
-  text-shadow:
-    0 0 2px white,
-    0 0 4px white;
-}
-
-/* MIDDLE = WHITE */
-.cell.M {
-  color: white;
-  text-shadow:
-    0 0 3px black,
-    0 0 6px black;
-}
-
-/* BACK = YELLOW */
-.cell.B {
-  color: rgba(255,210,0,0.95);
-  text-shadow:
-    0 0 2px black,
-    0 0 4px black;
-}
-
-.status {
-  margin-top: 10px;
-  font-size: 14px;
-  color: #333;
-}
-
-.gps-box {
+.status,
+.gps-box,
+.pin-box {
   margin-top: 10px;
   padding: 10px;
   background: white;
@@ -146,11 +102,12 @@ button {
   color: #333;
 }
 
-@media (max-width: 520px) {
-  .cell {
-    font-size: 14px;
-  }
+.pin-box {
+  font-weight: bold;
+  font-size: 16px;
+}
 
+@media (max-width: 520px) {
   .topbar {
     align-items: stretch;
   }
@@ -163,8 +120,7 @@ button {
 <div class="app">
 
   <div class="topbar">
-    <div id="modeLabel">Mode: Staff</div>
-    <button id="adminBtn">Admin</button>
+    <div id="modeLabel">Staff View</div>
   </div>
 
   <div class="selectors">
@@ -179,22 +135,14 @@ button {
   </div>
 
   <div class="tools">
-    <button onclick="setTool('F')">Front (F)</button>
-    <button onclick="setTool('M')">Middle (M)</button>
-    <button onclick="setTool('B')">Back (B)</button>
-    <button onclick="setTool('ERASE')">Erase</button>
-    <button onclick="setTool(null)">No Tool</button>
-  </div>
-
-  <div class="tools">
     <button onclick="zoomIn()">Zoom In</button>
     <button onclick="zoomOut()">Zoom Out</button>
     <button onclick="resetView()">Reset View</button>
-    <button onclick="clearCurrentGreenData()">Clear This Green</button>
+    <button onclick="detectNearestGreen()">Use GPS Nearest Green</button>
   </div>
 
-  <div class="tools">
-    <button onclick="detectNearestGreen()">Use GPS Nearest Green</button>
+  <div class="pin-box" id="pinRotationBox">
+    Today’s Location: --
   </div>
 
   <div class="gps-box" id="gpsStatus">
@@ -202,25 +150,18 @@ button {
   </div>
 
   <div class="status" id="statusText">
-    Staff Mode. Viewing Eagle 1.
+    Viewing Eagle 1.
   </div>
 
   <div class="map-wrap" id="mapWrap">
     <div class="map-inner" id="mapInner">
-      <img src="eagle-1.jpg" class="green-image" id="greenImage" alt="Green image">
-      <div id="grid" class="grid"></div>
+      <img src="" class="green-image" id="greenImage" alt="Green image">
     </div>
   </div>
 
 </div>
 
 <script>
-let isAdmin = false;
-let currentTool = null;
-
-const gridEl = document.getElementById("grid");
-const modeLabel = document.getElementById("modeLabel");
-const adminBtn = document.getElementById("adminBtn");
 const mapWrap = document.getElementById("mapWrap");
 const mapInner = document.getElementById("mapInner");
 const greenImage = document.getElementById("greenImage");
@@ -228,9 +169,7 @@ const courseSelect = document.getElementById("courseSelect");
 const holeSelect = document.getElementById("holeSelect");
 const statusText = document.getElementById("statusText");
 const gpsStatus = document.getElementById("gpsStatus");
-
-const rows = 40;
-const cols = 24;
+const pinRotationBox = document.getElementById("pinRotationBox");
 
 const greenLocations = [
   { course: "eagle", hole: 1, lat: 26.292575846472182, lng: -81.62863149601503 },
@@ -272,14 +211,11 @@ const greenLocations = [
   { course: "talon", hole: 18, lat: 26.28808816487806, lng: -81.63209074889177 }
 ];
 
-let gridLetters = [];
-
 let scale = 1;
 let translateX = 0;
 let translateY = 0;
 
 let isDragging = false;
-let pointerMoved = false;
 let startX = 0;
 let startY = 0;
 let dragStartX = 0;
@@ -295,115 +231,26 @@ function populateHoleSelect() {
   }
 }
 
-function getCurrentKey() {
-  return `pinGridData_${courseSelect.value}_${holeSelect.value}`;
-}
-
-function getCurrentImageName() {
-  return `${courseSelect.value}-${holeSelect.value}.jpg`;
-}
-
-function createGrid() {
-  gridLetters = [];
-  for (let r = 0; r < rows; r++) {
-    gridLetters[r] = [];
-    for (let c = 0; c < cols; c++) {
-      gridLetters[r][c] = "";
-    }
-  }
-}
-
-function saveData() {
-  localStorage.setItem(getCurrentKey(), JSON.stringify(gridLetters));
-}
-
-function loadData() {
-  const saved = localStorage.getItem(getCurrentKey());
-  if (saved) {
-    gridLetters = JSON.parse(saved);
-  } else {
-    createGrid();
-  }
-}
-
-function clearCurrentGreenData() {
-  localStorage.removeItem(getCurrentKey());
-  createGrid();
-  renderGrid();
+function getCurrentBaseName() {
+  return `${courseSelect.value}-${holeSelect.value}`;
 }
 
 function updateImage() {
-  greenImage.src = getCurrentImageName();
+  const base = getCurrentBaseName();
+  greenImage.src = `${base}.jpg`;
   greenImage.alt = `${courseSelect.value} ${holeSelect.value}`;
 }
 
 function updateStatus() {
   const courseName = courseSelect.value.charAt(0).toUpperCase() + courseSelect.value.slice(1);
-  const modeName = isAdmin ? "Admin" : "Staff";
-  statusText.textContent = `${modeName} Mode. Viewing ${courseName} ${holeSelect.value}.`;
+  statusText.textContent = `Viewing ${courseName} ${holeSelect.value}.`;
 }
 
 function changeGreen() {
   updateImage();
-  loadData();
-  renderGrid();
   resetView();
   updateStatus();
 }
-
-function renderGrid() {
-  gridEl.innerHTML = "";
-  gridEl.style.gridTemplateRows = `repeat(${rows},1fr)`;
-  gridEl.style.gridTemplateColumns = `repeat(${cols},1fr)`;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const cell = document.createElement("div");
-      cell.className = "cell";
-
-      const val = gridLetters[r][c];
-      cell.textContent = val;
-      if (val) cell.classList.add(val);
-
-      cell.onclick = () => {
-        if (pointerMoved) return;
-        if (!isAdmin || !currentTool) return;
-
-        if (currentTool === "ERASE") {
-          gridLetters[r][c] = "";
-        } else {
-          gridLetters[r][c] = gridLetters[r][c] === currentTool ? "" : currentTool;
-        }
-
-        renderGrid();
-      };
-
-      gridEl.appendChild(cell);
-    }
-  }
-
-  saveData();
-}
-
-function setTool(tool) {
-  currentTool = tool;
-}
-
-adminBtn.onclick = () => {
-  if (!isAdmin) {
-    const p = prompt("Enter admin password");
-    if (p === "2021") {
-      isAdmin = true;
-      modeLabel.innerText = "Mode: Admin";
-    }
-  } else {
-    isAdmin = false;
-    modeLabel.innerText = "Mode: Staff";
-    currentTool = null;
-  }
-
-  updateStatus();
-};
 
 function applyTransform() {
   mapInner.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
@@ -522,20 +369,10 @@ function detectNearestGreen() {
   );
 }
 
-mapWrap.addEventListener("wheel", (e) => {
-  e.preventDefault();
-  const delta = e.deltaY < 0 ? 0.1 : -0.1;
-  zoomAtPoint(e.clientX, e.clientY, delta);
-}, { passive: false });
-
-mapWrap.addEventListener("dblclick", (e) => {
-  zoomAtPoint(e.clientX, e.clientY, 0.2);
-});
-
 function pointerDown(x, y) {
   if (scale <= 1) return;
+
   isDragging = true;
-  pointerMoved = false;
   mapInner.classList.add("dragging");
   startX = x;
   startY = y;
@@ -549,22 +386,46 @@ function pointerMove(x, y) {
   const dx = x - startX;
   const dy = y - startY;
 
-  if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-    pointerMoved = true;
-  }
-
   translateX = dragStartX + dx;
   translateY = dragStartY + dy;
   applyTransform();
 }
 
 function pointerUp() {
-  setTimeout(() => {
-    isDragging = false;
-    mapInner.classList.remove("dragging");
-    pointerMoved = false;
-  }, 0);
+  isDragging = false;
+  mapInner.classList.remove("dragging");
 }
+
+function getTodaysLetter() {
+  const startDate = new Date(2026, 2, 22); // March 22, 2026 = A
+  const today = new Date();
+
+  startDate.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  const diffTime = today - startDate;
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+  const letters = ["A", "B", "C", "D", "E", "F"];
+  const index = ((diffDays % 6) + 6) % 6;
+
+  return letters[index];
+}
+
+function updatePinRotationDisplay() {
+  const letter = getTodaysLetter();
+  pinRotationBox.textContent = `Today’s Location: ${letter}`;
+}
+
+mapWrap.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const delta = e.deltaY < 0 ? 0.1 : -0.1;
+  zoomAtPoint(e.clientX, e.clientY, delta);
+}, { passive: false });
+
+mapWrap.addEventListener("dblclick", (e) => {
+  zoomAtPoint(e.clientX, e.clientY, 0.2);
+});
 
 mapWrap.addEventListener("mousedown", e => pointerDown(e.clientX, e.clientY));
 window.addEventListener("mousemove", e => pointerMove(e.clientX, e.clientY));
@@ -590,6 +451,7 @@ holeSelect.addEventListener("change", changeGreen);
 populateHoleSelect();
 holeSelect.value = "1";
 changeGreen();
+updatePinRotationDisplay();
 </script>
 
 </body>
